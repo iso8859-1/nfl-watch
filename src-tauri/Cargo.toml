@@ -1,6 +1,8 @@
 [package]
 name = "nfl-watch"
 version = "0.1.0"
+license = "MIT"
+repository = "https://github.com/iso8859-1/nfl-watch"
 description = "Spoiler-free NFL game recommendations"
 edition = "2021"
 
