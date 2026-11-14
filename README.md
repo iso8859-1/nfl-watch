@@ -89,7 +89,8 @@ watchability afterwards, against 28/100 for *Low hype* games. That's a useful
 but modest signal: plenty of great NFL games come out of nowhere, which is why
 the after-game ratings stay the main feature.
 
-The formulas are in [`src-tauri/src/rating.rs`](src-tauri/src/rating.rs).
+**[Read the full scoring documentation →](docs/scoring.md)** It covers every
+component, threshold and calibration result, with worked examples.
 
 ---
 
