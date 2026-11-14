@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NFL Watch</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>NFL Watch</h1>
+        <p class="tagline">What to watch, no spoilers</p>
+      </div>
+    </div>
+    <div class="controls">
+      <select id="season" aria-label="Season"></select>
+      <button id="btn-teams" class="btn" title="Choose favorite teams">★ My teams</button>
+      <button id="btn-settings" class="btn" title="Settings">⚙ Settings</button>
+      <button id="btn-refresh" class="btn icon" title="Refresh data">↻</button>
+    </div>
+  </header>
+
+  <nav id="weeks" class="weeks" aria-label="Weeks"></nav>
+
+  <main id="main">
+    <div class="loading">Loading…</div>
+  </main>
+
+  <!-- Favorite teams -->
+  <dialog id="dlg-teams" class="dialog">
+    <form method="dialog">
+      <h2>My teams</h2>
+      <p class="muted">Games of these teams always show up at the top, whatever their rating.</p>
+      <div id="team-grid" class="team-grid"></div>
+      <div class="dialog-actions">
+        <button class="btn primary" value="ok">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="dlg-settings" class="dialog narrow">
+    <form method="dialog">
+      <h2>Settings</h2>
+      <label class="check">
+        <input type="checkbox" id="set-reasons">
+        <span><strong>Always show why a game is rated the way it is</strong><br>
+        <small class="muted">Reasons like "Comeback" or "Overtime" are mild spoilers, so they're hidden behind a click by default.</small></span>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="set-hidefav">
+        <span><strong>Hide ratings for my teams' games</strong><br>
+        <small class="muted">A low rating for your team's game hints at a blowout.</small></span>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="set-hidewatched">
+        <span><strong>Hide games I've already watched</strong></span>
+      </label>
+      <label class="field">
+        <span><strong>"Recommended" means at least</strong></span>
+        <select id="set-minstars">
+          <option value="5">5 – Must watch</option>
+          <option value="4">4 – Worth it</option>
+          <option value="3">3 – Solid</option>
+          <option value="2">2 – Only if bored</option>
+        </select>
+      </label>
+      <fieldset class="windows">
+        <legend><strong>Live viewing windows</strong> <small class="muted">(local time, for the gameday plan)</small></legend>
+        <label>Full game if kickoff is between
+          <input type="time" id="set-earliest"> and <input type="time" id="set-full"></label>
+        <label>First half only if kickoff is before
+          <input type="time" id="set-half"></label>
+        <small class="muted">Anything later counts as a night game: watch the replay the next day.</small>
+      </fieldset>
+      <div class="dialog-actions">
+        <button class="btn primary" value="ok">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
