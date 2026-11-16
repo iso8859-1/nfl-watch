@@ -13,6 +13,7 @@ const state = {
   shownRatings: new Set(),  // favorite games whose hidden rating was opened
   results: new Map(),       // game id -> revealed final score
   expandedSlots: new Set(), // gameday-plan slots showing all their games
+  otherGamesOpen: false,    // "Other games" section expanded
   loadToken: 0,
 };
 
@@ -185,13 +186,16 @@ function renderWeek() {
 function section(title, games, emptyText) {
   return el("section", { class: "section" },
     el("h3", {}, title),
-    games.length ? el("div", { class: "grid" }, games.map(card)) : el("div", { class: "empty" }, emptyText || ""));
+    games.length ? el("div", { class: "grid" }, games.map((g) => card(g))) : el("div", { class: "empty" }, emptyText || ""));
 }
 
 function collapsible(title, games) {
-  return el("details", { class: "section" },
+  // renderWeek() rebuilds the DOM on every click, so keep the open state.
+  const node = el("details", { class: "section", open: state.otherGamesOpen },
     el("summary", {}, title),
-    el("div", { class: "grid" }, games.map(card)));
+    el("div", { class: "grid" }, games.map((g) => card(g))));
+  node.addEventListener("toggle", () => { state.otherGamesOpen = node.open; });
+  return node;
 }
 
 // ------------------------------------------------------------------ gameday plan
