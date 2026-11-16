@@ -126,6 +126,55 @@ Release outputs:
 The installer is not code-signed, so Windows SmartScreen shows "Unknown
 publisher" the first time you run it. Click *More info* and then *Run anyway*.
 
+### Android
+
+The same code base builds an Android app. The UI switches to a compact phone
+layout on narrow screens. It has been tested on a Pixel 8a running Android 17.
+
+**Prerequisites**, in addition to Rust and the Tauri CLI:
+- **Android Studio**, with these installed through the SDK Manager:
+  - *SDK Platforms:* Android API 37. The generated project compiles against
+    exactly this version (37.0); a 37.1 or 37.2 alone is not enough.
+  - *SDK Tools:* NDK (Side by side) and Android SDK Command-line Tools
+- **JDK 21**, for example Eclipse Temurin 21
+- **Environment variables:**
+
+  | Variable | Points to |
+  |---|---|
+  | `ANDROID_HOME` | the SDK folder, usually `%LOCALAPPDATA%\Android\Sdk` |
+  | `NDK_HOME` | the versioned NDK folder, e.g. `%ANDROID_HOME%\ndk\30.0.16248370` |
+  | `JAVA_HOME` | the JDK 21 folder |
+
+  Restart your terminal after setting them.
+- **Rust Android targets:**
+  ```sh
+  rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+  ```
+
+**Build and run.** The Android project is already generated and committed in
+`src-tauri/gen/android`, so you don't need `cargo tauri android init`.
+
+```sh
+cd src-tauri
+cargo tauri android dev                                  # run on a connected phone or emulator, with live reload
+cargo tauri android build --debug --apk --target aarch64 # debug APK for 64-bit ARM phones
+```
+
+The debug APK ends up in
+`src-tauri/gen/android/app/build/outputs/apk/universal/debug/`. To install it
+on a phone with USB debugging turned on, run:
+
+```sh
+adb install -r app-universal-debug.apk
+```
+
+The first build downloads Gradle and its dependencies, so it takes a few
+minutes. Debug APKs are large, about 175 MB, because the Rust code is
+unoptimized.
+
+Release builds are not set up yet: signing a release APK needs a keystore,
+which is not part of this repository. The app is not on the Play Store.
+
 ### Tests
 
 ```sh
@@ -149,6 +198,8 @@ SEASON=2025 cargo test hype_vs_rating -- --ignored --nocapture   # does hype pre
 - Everything else stays on your machine:
   - `%APPDATA%\com.nflwatch.desktop\user-data.json`: favorites, watched games, settings
   - `%APPDATA%\com.nflwatch.desktop\cache\`: cached game data, which you can delete at any time
+- On Android the same files live in the app's private storage. Clearing the
+  app's storage in Android's settings removes them. Phone and desktop don't sync.
 
 ## Project layout
 
@@ -159,8 +210,10 @@ ui/                    frontend: plain HTML/CSS/JS, no build step
   style.css
 src-tauri/
   tauri.conf.json      window, security policy (CSP), installer config
+  gen/android/         generated Android Studio project
   src/
-    main.rs            Tauri commands and spoiler-free view models
+    main.rs            desktop entry point
+    lib.rs             Tauri commands and spoiler-free view models; app entry point (desktop and Android)
     espn.rs            ESPN API client and disk cache
     rating.rs          watchability and hype scoring
     store.rs           favorites, watched games and settings
