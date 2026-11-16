@@ -220,9 +220,58 @@ details[open].section > summary::before { content: "▾ "; }
 .check input { margin-top: 4px; width: 16px; height: 16px; accent-color: var(--accent); }
 .field { flex-direction: column; gap: 6px; }
 
+/* ------------------------------------------------------------ safe areas
+   On Android 15+ the app draws edge to edge, behind the status bar and the
+   gesture bar. env(safe-area-inset-*) is 0 on desktop, so this is a no-op there. */
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+.topbar {
+  padding-top: calc(14px + var(--safe-top));
+  padding-left: calc(24px + var(--safe-left));
+  padding-right: calc(24px + var(--safe-right));
+}
+.weeks { padding-left: calc(24px + var(--safe-left)); padding-right: calc(24px + var(--safe-right)); }
+main { padding-bottom: calc(60px + var(--safe-bottom)); }
+.dialog { max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px); }
+
+/* Keeps scrolled content from showing through the transparent status bar. */
+body::before {
+  content: ""; position: fixed; z-index: 10; inset: 0 0 auto 0;
+  height: var(--safe-top); background: var(--bg);
+}
+
+/* ------------------------------------------------------------ phones */
+
 @media (max-width: 600px) {
-  .topbar, .weeks, main { padding-left: 14px; padding-right: 14px; }
+  .topbar, .weeks, main {
+    padding-left: calc(14px + var(--safe-left));
+    padding-right: calc(14px + var(--safe-right));
+  }
   .grid { grid-template-columns: 1fr; }
+
+  /* Compact header that scrolls away instead of eating a fifth of the screen. */
+  .topbar {
+    position: static; flex-wrap: nowrap; gap: 10px;
+    padding-top: calc(10px + var(--safe-top)); padding-bottom: 10px;
+    backdrop-filter: none; background: var(--bg);
+  }
+  .tagline, .btn .label { display: none; }
+  .brand { gap: 8px; min-width: 0; }
+  .brand h1 { font-size: 16px; white-space: nowrap; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 7px; flex: none; }
+  .controls { flex-wrap: nowrap; gap: 6px; }
+  .controls .btn { width: 40px; height: 38px; padding: 0; font-size: 16px; }
+  .controls select { padding: 7px 8px; height: 38px; }
+  .weeks { padding-top: 8px; padding-bottom: 8px; }
+  main { padding-top: 14px; }
+
+  .dialog { padding: 18px 16px; width: calc(100vw - 24px); }
 }
 
 /* ------------------------------------------------------------ gameday plan */
