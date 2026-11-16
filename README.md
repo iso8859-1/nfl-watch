@@ -172,8 +172,46 @@ The first build downloads Gradle and its dependencies, so it takes a few
 minutes. Debug APKs are large, about 175 MB, because the Rust code is
 unoptimized.
 
-Release builds are not set up yet: signing a release APK needs a keystore,
-which is not part of this repository. The app is not on the Play Store.
+#### Signed release build
+
+Release APKs are signed with a key from a keystore, which is not part of this
+repository. Gradle finds it through `src-tauri/gen/android/keystore.properties`,
+which git ignores:
+
+```properties
+storeFile=C:/Users/<you>/.android-keystores/nfl-watch-release.jks
+storePassword=...
+keyAlias=nfl-watch
+keyPassword=...
+```
+
+To create a keystore of your own, use the `keytool` that comes with the JDK:
+
+```sh
+keytool -genkeypair -keystore nfl-watch-release.jks -storetype PKCS12 -alias nfl-watch \
+        -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Your Name"
+```
+
+Then build:
+
+```sh
+cargo tauri android build --apk --target aarch64
+```
+
+The signed APK ends up in
+`src-tauri/gen/android/app/build/outputs/apk/universal/release/`. Without
+`keystore.properties`, the release build still works but produces an unsigned
+APK that Android won't install.
+
+> **Back up the keystore and its password.** Android only installs an update
+> if it's signed with the same key as the installed app. If the key is lost,
+> users have to uninstall the app, losing their favorites and watched games,
+> and install it again.
+
+Android also refuses to install a release APK over a debug build, because the
+two are signed with different keys. Uninstall the debug build first.
+
+The app is not on the Play Store.
 
 ### Tests
 
