@@ -10,9 +10,14 @@ NFL Watch gives games two different scores:
 | Shown as | 0–100 score and 1–5 bars: *Skip it … Must watch* | 0–100 score and 1–5 bars: *Low hype … Can't miss* |
 | Spoiler risk | reasons are hidden behind a click | none, so reasons are always shown |
 
-Both are implemented in [`src-tauri/src/rating.rs`](../src-tauri/src/rating.rs):
-`rate()` computes watchability and `hype()` computes hype. This document
-describes the formulas exactly as they are in the code.
+Both are implemented in [`src-tauri/src/rating.rs`](../src-tauri/src/rating.rs).
+Each score is a sum of components. `watch_parts()` and `hype_parts()` compute
+the components, and `Scorer::rate()` and `Scorer::hype()` turn them into a
+score. This document describes the formulas exactly as they are in the code.
+
+The sections below describe the **default weights**. If you change the
+weights in Settings, the components are combined differently, as described in
+[Custom weights](#custom-weights).
 
 ---
 
@@ -49,7 +54,8 @@ Both scores use this.
 
 ## Watchability (finished games)
 
-The score is the **sum of eight components**, rounded and clamped to 0–100.
+With default weights, the score is the **sum of nine components**, rounded
+and clamped to 0–100.
 The components overlap on purpose: a truly great game, such as a comeback
 with a late go-ahead score in a close finish with big win-probability swings,
 collects points from several of them and saturates near 100. A blowout
@@ -230,8 +236,8 @@ field goal, and then the winner took over for good. Excitement index 1.9.
 ## Hype (upcoming games)
 
 Hype uses only information that is public **before kickoff**, so it can't
-spoil anything. It is the sum of five components, rounded and clamped to
-0–100. The highest reachable value is 91.
+spoil anything. With default weights, it is the sum of five components,
+rounded and clamped to 0–100. The highest reachable value is 91.
 
 ### 1. Betting line: expected closeness (0 to 30)
 
@@ -301,11 +307,11 @@ actually earned. This covers 208 games from week 5 onward:
 
 | Hype | Games | Average watchability afterwards |
 |---|---|---|
-| 1 – Low hype | 45 | 27.6 |
-| 2 – Meh | 38 | 40.8 |
-| 3 – Decent | 55 | 34.0 |
-| 4 – Promising | 39 | 42.7 |
-| 5 – Can't miss | 31 | 47.5 |
+| 1 – Low hype | 35 | 24.9 |
+| 2 – Meh | 57 | 39.6 |
+| 3 – Decent | 54 | 35.1 |
+| 4 – Promising | 39 | 40.2 |
+| 5 – Can't miss | 23 | 52.4 |
 
 The correlation between the two scores is **0.22**. That's a real but modest
 signal: a *Can't miss* game is on average clearly better than a *Low hype*
@@ -328,6 +334,132 @@ rivals.
 | Top matchup | 10 |
 | Division rivals | 6 |
 | **Total** | **73.7 → 74 → Can't miss** |
+
+---
+
+## Custom weights
+
+*Settings → Rating weights* has a slider for every component of both scores:
+the nine watchability components and the five hype components. A slider goes
+from 0 (off) through 1 (the default) up to 3×.
+
+### Why the weights aren't just multiplied in
+The obvious approach is `score = Σ weightᵢ × componentᵢ`, maybe with the
+weights normalized to sum to 1. It doesn't work, for two reasons:
+
+1. **The components have very different ranges.** *Close final score* spans
+   −10 to 25 and differs a lot from game to game. *Top matchup* is 0 or 6 and
+   is 0 for most games. A weight only says how much a component is
+   multiplied by, not how much it actually moves the score. Normalizing the
+   weights doesn't change that.
+2. **The star cutoffs only fit the default formula.** The cutoffs (75, 58, 40,
+   15) were calibrated on the default score distribution, and weights change
+   that distribution. Halving *Close final score* pulls nearly every game down
+   a tier. Tripling *Momentum swings* pushes most good games past 100.
+
+### The calculation
+A weighted score is computed in five steps:
+
+1. **Components.** Compute the component points exactly as described above
+   (`watch_parts()` and `hype_parts()` in `rating.rs`).
+2. **Weighted sum.** `weighted = Σ weightᵢ × componentᵢ`
+3. **Rank in the reference season.** The app embeds the component points of
+   every 2025 game (`src-tauri/data/watch-sample.csv` and `hype-sample.csv`).
+   It computes the weighted sum of every reference game too, then finds where
+   this game's weighted sum ranks among them.
+4. **Default score at the same rank.** The score is the *default* score of the
+   reference season at that rank. If a game's weighted sum beats 94% of the
+   reference games, it gets the default score that beats 94% of them.
+5. **Round, clamp and convert to bars** with the usual cutoffs.
+
+In formula terms this is quantile matching. With *F_w* the distribution of
+weighted sums in the reference season and *Q₁* the quantile function of the
+default scores:
+
+```
+score = Q₁( F_w( Σ weightᵢ × componentᵢ ) )
+```
+
+Implementation details (`Model` in `rating.rs`):
+- Both lists of reference scores, weighted and default, are sorted and paired
+  by position. Reference games with the same weighted sum share the average of
+  their default scores.
+- Between those points the mapping interpolates linearly. Outside the range of
+  the reference season it extends linearly, with the average slope of the whole
+  range, so a record-breaking game can still exceed the best 2025 game.
+- With every weight at exactly 1, the mapping is skipped and the score is the
+  plain sum, as before.
+
+The reference samples hold only component points. They have no teams, dates
+or game ids, and the rows are sorted, so they can't be matched to games.
+Watchability uses all 285 games of 2025, playoffs included. Hype uses the 208
+regular-season games from week 5 on, the same set its cutoffs were calibrated
+on.
+
+### What this guarantees
+- **Default weights give the default formula**, so nothing changes until you
+  move a slider.
+- **Only the ratios between weights matter.** Setting every slider to 2×
+  ranks the games exactly as setting them all to 1× does, so it gives the
+  same scores.
+- **The star shares stay the same.** About 15% of games are still *Must
+  watch* and about 30% are still *Skip it*. What changes is *which* games end
+  up there. Tested in `weighting_keeps_the_star_shares`.
+- **The score keeps its meaning.** A 75 is still roughly the top 15% of games,
+  whatever the weights.
+
+### Worked example
+Take the two made-up games from the [watchability examples](#worked-examples),
+with *Close final score* switched off and *Momentum swings* at 3×:
+
+| | Thriller | Blowout |
+|---|---|---|
+| Default score (sum of components) | 91.5 | −5 |
+| … beats this share of 2025 games | 96% | 9% |
+| Weighted sum: closeness × 0, excitement × 3 | 0 + 3 × 23.5 + 13 + 8 + 12 + 6 + 4 = **113.5** | 0 + 3 × 2 + 3 = **9** |
+| … beats this share of 2025 games (weighted) | 94% | 13% |
+| Score: default score at that rank | **87 → Must watch** | **−0.9 → 0 → Skip it** |
+
+The weighted sum of the thriller, 113.5, would be meaningless on the 0–100
+scale. Mapped by rank, it becomes 87. That is a little lower than before,
+because the game's close finish no longer counts, but it is still clearly
+*Must watch*. The blowout climbs from the 9th to the 13th percentile, because
+the margin penalty no longer counts, but it stays *Skip it*.
+
+For the whole 2025 season, these weights move 52 of 285 games (18%) to a
+different tier. The tier shares stay the same.
+
+### Influence
+Next to each slider, the settings screen shows the criterion's share of the
+influence:
+
+```
+influenceᵢ = weightᵢ × σᵢ / Σⱼ weightⱼ × σⱼ
+```
+
+σᵢ is the standard deviation of the component's points across the reference
+season. A component that is the same for almost every game, such as *Top
+matchup*, can't separate games much, whatever its weight. With the default
+weights:
+
+| Watchability | σ | Influence | | Hype | σ | Influence |
+|---|---|---|---|---|---|---|
+| Close final score | 12.8 | 28% | | Close betting line | 7.0 | 30% |
+| Momentum swings | 7.9 | 17% | | Team quality | 6.2 | 26% |
+| Late drama | 5.2 | 11% | | Expected points | 3.9 | 16% |
+| Lead changes | 4.6 | 10% | | Top matchup | 3.7 | 15% |
+| Scoring extremes | 4.4 | 10% | | Division rivalry | 2.9 | 12% |
+| Comebacks | 3.7 | 8% | | | | |
+| Overtime | 2.3 | 5% | | | | |
+| Upsets | 2.2 | 5% | | | | |
+| Top matchup | 2.3 | 5% | | | | |
+
+The figure ignores correlations between components (comebacks often come
+with lead changes), so treat it as a guide, not an exact decomposition.
+
+### Reasons
+If you switch a criterion off (weight 0), its reasons are no longer shown. For
+example, *Underdog upset* doesn't appear when upsets don't count.
 
 ---
 
@@ -383,6 +515,13 @@ These tests print aggregates only, never teams or scores:
 cd src-tauri
 SEASON=2025 cargo test calibration -- --ignored --nocapture      # watchability star distribution
 SEASON=2025 cargo test hype_vs_rating -- --ignored --nocapture   # hype vs. actual watchability
+```
+
+After changing a component's formula, regenerate the reference samples used
+for [custom weights](#custom-weights). The command prints only row counts:
+
+```sh
+SEASON=2025 cargo test export_samples -- --ignored --nocapture
 ```
 
 Finished games are cached on disk, so you can iterate quickly after the first run.

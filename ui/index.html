@@ -76,7 +76,23 @@
           <input type="time" id="set-half"></label>
         <small class="muted">Anything later counts as a night game: watch the replay the next day.</small>
       </fieldset>
+      <button type="button" id="btn-weights" class="btn weights-link">⚖ Rating weights…<span id="weights-state" class="muted"></span></button>
       <div class="dialog-actions">
+        <button class="btn primary" value="ok">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Rating weights -->
+  <dialog id="dlg-weights" class="dialog narrow">
+    <form method="dialog">
+      <h2>Rating weights</h2>
+      <p class="muted">Choose what makes a game fun for you. Only the balance between criteria
+        matters. Stars are recalibrated against the whole 2025 season, so roughly the same share
+        of games stays <em>Must watch</em> whatever you change.</p>
+      <div id="weights-body"></div>
+      <div class="dialog-actions spread">
+        <button type="button" id="btn-weights-reset" class="btn">Reset to defaults</button>
         <button class="btn primary" value="ok">Done</button>
       </div>
     </form>

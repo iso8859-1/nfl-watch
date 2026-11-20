@@ -9,6 +9,7 @@ const state = {
   games: [],
   user: { favorites: [], watched: [], settings: {} },
   teams: [],
+  criteria: null,           // weightable rating criteria, from the backend
   revealed: new Set(),      // game ids whose rating reasons were opened
   shownRatings: new Set(),  // favorite games whose hidden rating was opened
   results: new Map(),       // game id -> revealed final score
@@ -475,6 +476,11 @@ function openSettings() {
   $("#set-earliest").value = s.earliestKickoff;
   $("#set-full").value = s.fullGameBefore;
   $("#set-half").value = s.firstHalfBefore;
+  $("#weights-state").textContent = isDefaultWeights(s.weights) ? "" : " (customized)";
+  $("#btn-weights").onclick = () => {
+    dlg.addEventListener("close", () => openWeights(), { once: true });
+    dlg.close();
+  };
   dlg.showModal();
   dlg.onclose = async () => {
     const settings = {
@@ -485,10 +491,135 @@ function openSettings() {
       earliestKickoff: $("#set-earliest").value || s.earliestKickoff,
       fullGameBefore: $("#set-full").value || s.fullGameBefore,
       firstHalfBefore: $("#set-half").value || s.firstHalfBefore,
+      weights: state.user.settings.weights, // edited in their own dialog
     };
     try {
       state.user = await invoke("set_settings", { settings });
       if (state.overview && state.games.length) renderWeek();
+    } catch (e) {
+      alert(e);
+    }
+  };
+}
+
+// ------------------------------------------------------------------ rating weights
+
+const weightOf = (map, key) => map?.[key] ?? 1;
+
+function isDefaultWeights(w) {
+  return [w?.watch, w?.hype].every((m) => Object.values(m || {}).every((v) => v === 1));
+}
+
+const fmtWeight = (v) => (v === 0 ? "off" : `×${v.toFixed(1)}`);
+
+async function openWeights() {
+  const dlg = $("#dlg-weights");
+  const body = $("#weights-body");
+  if (!state.criteria) {
+    try {
+      state.criteria = await invoke("get_criteria");
+    } catch (e) {
+      alert(e);
+      return;
+    }
+  }
+  const saved = state.user.settings.weights || {};
+  const draft = { watch: { ...saved.watch }, hype: { ...saved.hype } };
+  const max = state.criteria.maxWeight;
+
+  // A criterion's influence: its weight times how much its points typically
+  // vary between games. A bonus that almost every game gets (or none) can't
+  // change the ranking much, whatever its weight.
+  const group = (kind) => {
+    const list = state.criteria[kind];
+    const shares = new Map();
+    const rows = new Map();
+    const warn = el("p", { class: "weights-warn", hidden: true },
+      "With every criterion off, all games get the same rating.");
+    const updateShares = () => {
+      const total = list.reduce((sum, c) => sum + weightOf(draft[kind], c.key) * c.spread, 0);
+      for (const c of list) {
+        const share = total > 0 ? (weightOf(draft[kind], c.key) * c.spread) / total : 0;
+        const { pct, bar } = shares.get(c.key);
+        pct.textContent = `${Math.round(share * 100)}%`;
+        bar.style.width = `${share * 100}%`;
+      }
+      warn.hidden = total > 0;
+    };
+    for (const c of list) {
+      // Android's WebView drops aria-label on range inputs, so the slider is
+      // labelled by a real <label> and announces its value as text.
+      const id = `w-${kind}-${c.key}`;
+      const value = el("span", { class: "w-value", "aria-hidden": "true" });
+      const slider = el("input", {
+        type: "range", id, min: 0, max, step: 0.1, value: weightOf(draft[kind], c.key),
+        "aria-labelledby": `${id}-label`, "aria-describedby": `${id}-help`,
+        oninput: (e) => {
+          const v = Math.round(Number(e.target.value) * 10) / 10;
+          draft[kind][c.key] = v;
+          showValue(v);
+          updateShares();
+        },
+      });
+      const showValue = (v) => {
+        value.textContent = fmtWeight(v);
+        slider.setAttribute("aria-valuetext", v === 0 ? `${c.label}: off` : `${c.label}: ${v.toFixed(1)} times`);
+      };
+      showValue(weightOf(draft[kind], c.key));
+      const pct = el("span", { class: "w-pct" });
+      const bar = el("i");
+      shares.set(c.key, { pct, bar });
+      rows.set(c.key, { slider, showValue });
+      body.append(el("div", { class: "w-row" },
+        el("div", { class: "w-label" },
+          el("label", { for: id, id: `${id}-label` }, el("strong", {}, c.label)),
+          el("small", { class: "muted", id: `${id}-help` }, c.help)),
+        el("div", { class: "w-control" }, slider, value),
+        el("div", { class: "w-influence", title: "Share of the influence on the rating" },
+          el("span", { class: "w-bar" }, bar), pct)));
+    }
+    updateShares();
+    return { kind, rows, updateShares, warn };
+  };
+
+  body.replaceChildren();
+  const groups = [];
+  for (const [kind, title, note] of [
+    ["watch", "Finished games", "Watchability: what happened in the game."],
+    ["hype", "Upcoming games", "Hype: pre-game info only, used for the gameday plan."],
+  ]) {
+    body.append(el("h3", { class: "w-group" }, title, el("small", { class: "muted" }, ` ${note}`)));
+    const head = el("div", { class: "w-row w-head muted" },
+      el("span", {}, "Criterion"), el("span", {}, "Weight"), el("span", {}, "Influence"));
+    body.append(head);
+    const g = group(kind);
+    body.append(g.warn);
+    groups.push(g);
+  }
+
+  $("#btn-weights-reset").onclick = () => {
+    for (const g of groups) {
+      draft[g.kind] = {};
+      for (const { slider, showValue } of g.rows.values()) {
+        slider.value = 1;
+        showValue(1);
+      }
+      g.updateShares();
+    }
+  };
+
+  dlg.showModal();
+  dlg.onclose = async () => {
+    // Store a full, explicit set so the file is readable, but compare by value.
+    const full = (kind) => Object.fromEntries(
+      state.criteria[kind].map((c) => [c.key, weightOf(draft[kind], c.key)]));
+    const weights = { watch: full("watch"), hype: full("hype") };
+    const same = ["watch", "hype"].every((k) =>
+      state.criteria[k].every((c) => weightOf(saved[k], c.key) === weights[k][c.key]));
+    if (same) return;
+    try {
+      state.user = await invoke("set_settings", { settings: { ...state.user.settings, weights } });
+      if (state.overview) await loadWeek(); // ratings change, so fetch them again
     } catch (e) {
       alert(e);
     }

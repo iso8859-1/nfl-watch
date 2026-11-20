@@ -84,10 +84,16 @@ Hype uses only information available before kickoff:
 - top matchups
 - division rivalries
 
-Checked against the 2025 season, games rated *Can't miss* averaged 48/100
-watchability afterwards, against 28/100 for *Low hype* games. That's a useful
+Checked against the 2025 season, games rated *Can't miss* averaged 52/100
+watchability afterwards, against 25/100 for *Low hype* games. That's a useful
 but modest signal: plenty of great NFL games come out of nowhere, which is why
 the after-game ratings stay the main feature.
+
+### Your own weights
+Under *Settings → Rating weights*, a slider for each criterion sets how much it
+counts. You could ignore upsets entirely, or care twice as much about
+momentum swings. The stars are recalibrated automatically, so *Must watch*
+still means roughly the top 15% of games.
 
 **[Read the full scoring documentation →](docs/scoring.md)** It covers every
 component, threshold and calibration result, with worked examples.
@@ -255,6 +261,7 @@ src-tauri/
     espn.rs            ESPN API client and disk cache
     rating.rs          watchability and hype scoring
     store.rs           favorites, watched games and settings
+  data/                anonymous 2025 reference samples for calibrating custom weights
 docs/                  screenshots
 ```
 

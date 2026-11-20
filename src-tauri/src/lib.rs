@@ -10,7 +10,7 @@ mod rating;
 mod store;
 
 use espn::{Espn, Game, Line, Team, WeekInfo, POST, REGULAR};
-use rating::{Rating, Record};
+use rating::{CriteriaInfo, Rating, Record, Scorer};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -189,6 +189,7 @@ async fn get_week(app: State<'_, App>, season: i32, season_type: u8, week: u8) -
         records_before(&app, season, season_type, week)
     );
     let data = user_data(&app);
+    let scorer = Scorer::new(&data.settings.weights);
 
     let cards = games
         .iter()
@@ -220,9 +221,9 @@ async fn get_week(app: State<'_, App>, season: i32, season_type: u8, week: u8) -
                 top_matchup: rating::top_matchup(hr, ar),
                 international,
                 line: line_text(g, line),
-                rating: g.completed.then(|| rating::rate(g, f, hr, ar)),
+                rating: g.completed.then(|| scorer.rate(g, f, hr, ar)),
                 hype: (!g.completed).then(|| {
-                    rating::hype(&g.home.team.abbr, &g.away.team.abbr, line, hr, ar, international)
+                    scorer.hype(&g.home.team.abbr, &g.away.team.abbr, line, hr, ar, international)
                 }),
             }
         })
@@ -233,6 +234,12 @@ async fn get_week(app: State<'_, App>, season: i32, season_type: u8, week: u8) -
 #[tauri::command]
 async fn get_teams(app: State<'_, App>) -> Res<Vec<Team>> {
     app.espn.teams().await
+}
+
+/// The rating criteria the user can weight, for the settings screen.
+#[tauri::command]
+fn get_criteria() -> CriteriaInfo {
+    rating::criteria_info()
 }
 
 #[tauri::command]
@@ -300,6 +307,7 @@ pub fn run() {
             get_overview,
             get_week,
             get_teams,
+            get_criteria,
             get_user_data,
             set_favorites,
             set_watched,
@@ -334,7 +342,7 @@ mod calibration {
                 let facts = espn.many_facts(&ids).await;
                 let mut per_week = [0usize; 6];
                 for g in games.iter().filter(|g| g.completed) {
-                    let r = rating::rate(g, facts.get(&g.id), Record::default(), Record::default());
+                    let r = Scorer::default().rate(g, facts.get(&g.id), Record::default(), Record::default());
                     stars[r.stars as usize] += 1;
                     per_week[r.stars as usize] += 1;
                     scores.push(r.score);
@@ -362,6 +370,7 @@ mod calibration {
     fn hype_vs_rating() {
         let season: i32 = std::env::var("SEASON").ok().and_then(|s| s.parse().ok()).unwrap_or(2025);
         let espn = Espn::new(std::env::temp_dir().join("nfl-watch-calibration"));
+        let scorer = Scorer::default();
         tauri::async_runtime::block_on(async {
             let weeks = espn.season_weeks(season).await.unwrap();
             let mut records: HashMap<String, Record> = HashMap::new();
@@ -375,8 +384,8 @@ mod calibration {
                     let hr = records.get(&g.home.team.id).copied().unwrap_or_default();
                     let ar = records.get(&g.away.team.id).copied().unwrap_or_default();
                     let f = facts.get(&g.id);
-                    let h = rating::hype(&g.home.team.abbr, &g.away.team.abbr, f.and_then(|f| f.line.as_ref()), hr, ar, g.neutral);
-                    let r = rating::rate(g, f, hr, ar);
+                    let h = scorer.hype(&g.home.team.abbr, &g.away.team.abbr, f.and_then(|f| f.line.as_ref()), hr, ar, g.neutral);
+                    let r = scorer.rate(g, f, hr, ar);
                     if w.week < 5 { continue; } // records mean little early on
                     pairs.push((h.score as f64, r.score as f64));
                     by_star[h.stars as usize].0 += 1;
@@ -403,6 +412,64 @@ mod calibration {
                 let (c, sum) = by_star[s];
                 if c > 0 { println!("hype {s}*: n={c:>3} avg watchability={:.1}", sum / c as f64); }
             }
+        });
+    }
+
+    /// Writes the anonymous reference samples used to calibrate weighted scores
+    /// (`data/*-sample.csv`): component points only, rows sorted, no game ids.
+    /// Run with: SEASON=2025 cargo test export_samples -- --ignored
+    #[test]
+    #[ignore]
+    fn export_samples() {
+        let season: i32 = std::env::var("SEASON").ok().and_then(|s| s.parse().ok()).unwrap_or(2025);
+        let espn = Espn::new(std::env::temp_dir().join("nfl-watch-calibration"));
+        tauri::async_runtime::block_on(async {
+            let weeks = espn.season_weeks(season).await.unwrap();
+            let mut records: HashMap<String, Record> = HashMap::new();
+            let mut watch: Vec<Vec<f64>> = Vec::new();
+            let mut hype: Vec<Vec<f64>> = Vec::new();
+            // Regular season first, so playoff games see the full regular-season records.
+            let mut ordered: Vec<_> = weeks.iter().filter(|w| w.season_type == REGULAR).collect();
+            ordered.extend(weeks.iter().filter(|w| w.season_type == POST));
+            for w in ordered {
+                let games = espn.week_games(season, w.season_type, w.week).await.unwrap();
+                let ids: Vec<String> = games.iter().filter(|g| g.completed).map(|g| g.id.clone()).collect();
+                let facts = espn.many_facts(&ids).await;
+                for g in games.iter().filter(|g| g.completed) {
+                    let hr = records.get(&g.home.team.id).copied().unwrap_or_default();
+                    let ar = records.get(&g.away.team.id).copied().unwrap_or_default();
+                    let f = facts.get(&g.id);
+                    watch.push(rating::watch_parts(g, f, hr, ar).pts.to_vec());
+                    if w.season_type == REGULAR && w.week >= 5 {
+                        let line = f.and_then(|f| f.line.as_ref());
+                        let neutral = g.neutral;
+                        hype.push(rating::hype_parts(&g.home.team.abbr, &g.away.team.abbr, line, hr, ar, neutral).pts.to_vec());
+                    }
+                }
+                if w.season_type != REGULAR {
+                    continue;
+                }
+                for g in games.iter().filter(|g| g.completed) {
+                    let (h, a) = (g.home.score, g.away.score);
+                    let e = records.entry(g.home.team.id.clone()).or_default();
+                    if h > a { e.w += 1 } else if h < a { e.l += 1 } else { e.t += 1 }
+                    let e = records.entry(g.away.team.id.clone()).or_default();
+                    if a > h { e.w += 1 } else if a < h { e.l += 1 } else { e.t += 1 }
+                }
+            }
+            let write = |name: &str, keys: Vec<&str>, mut rows: Vec<Vec<f64>>| {
+                rows.sort_by(|a, b| a.iter().zip(b).map(|(x, y)| x.total_cmp(y)).find(|o| o.is_ne()).unwrap_or(std::cmp::Ordering::Equal));
+                let mut text = keys.join(",") + "\n";
+                for r in &rows {
+                    let cells: Vec<String> = r.iter().map(|x| format!("{}", (x * 100.0).round() / 100.0)).collect();
+                    text += &(cells.join(",") + "\n");
+                }
+                let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data").join(name);
+                std::fs::write(&path, text).unwrap();
+                println!("{name}: {} rows", rows.len());
+            };
+            write("watch-sample.csv", rating::WATCH_CRITERIA.iter().map(|c| c.key).collect(), watch);
+            write("hype-sample.csv", rating::HYPE_CRITERIA.iter().map(|c| c.key).collect(), hype);
         });
     }
 }

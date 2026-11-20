@@ -1,5 +1,6 @@
 //! Persistent user data: favorite teams, watched games, settings.
 
+use crate::rating::Weights;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -22,6 +23,8 @@ pub struct Settings {
     pub earliest_kickoff: String,
     pub full_game_before: String,
     pub first_half_before: String,
+    /// Relative weights of the rating criteria (1.0 = default formula).
+    pub weights: Weights,
 }
 
 impl Default for Settings {
@@ -34,6 +37,7 @@ impl Default for Settings {
             earliest_kickoff: "09:00".into(),
             full_game_before: "20:30".into(),
             first_half_before: "23:30".into(),
+            weights: Weights::default(),
         }
     }
 }

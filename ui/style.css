@@ -319,3 +319,33 @@ body::before {
 .windows { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin: 16px 0 0; }
 .windows label { display: block; margin: 8px 0; }
 .windows input { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+
+/* ------------------------------------------------------------ rating weights */
+
+.weights-link { display: block; width: 100%; text-align: left; margin-top: 16px; }
+.dialog-actions.spread { justify-content: space-between; gap: 8px; }
+.w-group { margin: 20px 0 6px; font-size: 15px; }
+.w-group small { font-weight: 400; font-size: 12.5px; }
+.w-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 150px 96px;
+  gap: 12px; align-items: center; padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.w-head { font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; padding: 2px 0; border-top: none; }
+.w-label { display: flex; flex-direction: column; min-width: 0; }
+.w-label small { font-size: 12px; line-height: 1.35; }
+.w-control { display: flex; align-items: center; gap: 8px; }
+.w-control input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.w-value { width: 34px; text-align: right; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.w-influence { display: flex; align-items: center; gap: 6px; }
+.w-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.w-bar i { display: block; height: 100%; background: var(--accent); transition: width .12s; }
+.w-pct { width: 32px; text-align: right; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.weights-warn { color: var(--tier-5); margin: 6px 0 0; font-size: 12.5px; }
+
+@media (max-width: 600px) {
+  .w-row { grid-template-columns: minmax(0, 1fr) 84px; row-gap: 4px; }
+  .w-head { display: none; }
+  .w-label { grid-column: 1 / -1; }
+  .w-control { grid-column: 1; }
+}
